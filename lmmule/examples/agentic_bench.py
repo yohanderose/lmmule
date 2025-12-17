@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Awaitable
 
 from lmmule.mule import Mule
-from lmmule.examples.allmules import ResearchTeam, Research, Thinker
+from lmmule.examples.allmules import Thinker, Researcher
 import lmmule.mule
 
 from rich.console import Console
@@ -18,24 +18,33 @@ console = Console()
 async def main():
     Mule.init_args()
     model_name = lmmule.mule.args.model
+    topics = "index file DB in C for mcu application"
+
+    sources = await Mule.websearch(topics, num_res=8)
+    contents = [item["content"] for item in sources]
 
     ts1 = datetime.now()
-    task1 = await ResearchTeam(
+    grad_students = {
+        f"{i}": Thinker(
+            f"minimule-{i}",
+            model_name=model_name,
+            base_prompt=f"take careful notes on {topics} from the following source:\n{src}",
+        )()
+        for i, src in enumerate(contents)
+    }
+    task1 = await Researcher(
         "mule4-alice",
         model_name=model_name,
-        topics="flutter shaders",
-        base_prompt="give me code to simply implement shaders in flutter",
-        search_num_res=10,
-    )()
+        base_prompt="refer to the following notes and give code to implement \n\n{}",
+    )(**grad_students)
     console.print(Markdown(task1[-1]["content"]))
 
+    notes = "\n".join(contents)
     ts2 = datetime.now()
-    task2 = await Research(
+    task2 = await Thinker(
         "mule4-paul",
         model_name=model_name,
-        topics="flutter shaders",
-        base_prompt="give me code to simply implement shaders in flutter",
-        search_num_res=10,
+        base_prompt=f"refer to the following notes and give code to implement \n\n{notes}",
     )()
     console.print(Markdown(task2[-1]["content"]))
 
@@ -44,7 +53,7 @@ async def main():
 
     task3 = await Thinker(
         "mule6-jim",
-        model_name=args.model,
+        model_name=model_name,
         base_prompt=f"carefully analyse and compare the below 2 guides separated by >><<, and explain which is better, first or second. \n{task1[-1]['content']}\n>><<\n{task2[-1]['content']}",
     )()
     console.print(Markdown(task3[-1]["content"]))

@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
 ## Agentic Flows
 
-I've included an example comparing agentic vs non-agentic approaches. As demonstrated by many others, combining the efforts of distributed task specific workers yields much higher quality and more relevant output. This is at the cost of some speed, as the `ResearchTeam` Mule takes 2-3x the time of `Research`.
+I've included an example comparing agentic vs non-agentic approaches. As demonstrated by many others, combining the efforts of distributed task specific workers yields much higher quality and more relevant output. This is often at the cost of speed, as the aggregating `Researcher` Mule can take 1-3x the time of `Thinker` alone.
 
 [`lmmule/examples/agentic_bench.py`](https://github.com/yohanderose/lmmule/blob/master/lmmule/examples/agentic_bench.py)
 
