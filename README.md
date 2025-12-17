@@ -67,6 +67,14 @@ if __name__ == "__main__":
 
 ![Example output](https://raw.githubusercontent.com/yohanderose/lmmule/master/docs/lmmule-output.png)
 
+## Agentic Flows
+
+I've included an example comparing agentic vs non-agentic approaches. As demonstrated by many others, combining the efforts of distributed task specific workers yields much higher quality and more relevant output. This is at the cost of some speed, as the `ResearchTeam` Mule takes 2-3x the time of `Research`.
+
+[`lmmule/examples/agentic_bench.py`](https://github.com/yohanderose/lmmule/blob/master/lmmule/examples/agentic_bench.py)
+
+![Example output](https://raw.githubusercontent.com/yohanderose/lmmule/master/docs/agentic-eval.png)
+
 ## TODO
 
 - base tools in abstract class

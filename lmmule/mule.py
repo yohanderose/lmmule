@@ -7,8 +7,8 @@ import aiohttp
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Awaitable, Generator
-from googlesearch import search
 from markdownify import markdownify as md
+from ddgs import DDGS
 from lxml import html, etree
 
 logging.basicConfig(filename="/tmp/mule.log", level=logging.INFO, filemode="a+")
@@ -56,8 +56,8 @@ class Multils:
                 return {"error": await response.text()}
 
     @classmethod
-    async def google(cls, query: str, num_results: int) -> Generator:
-        return search(query, num_results=num_results, advanced=True)
+    def ddg_search(cls, query: str, num_results: int) -> list:
+        return DDGS().text(query, max_results=num_results, region="wt-wt")
 
     @classmethod
     async def scrape_page(cls, title: str, url: str, allowed_tags: set[str]) -> dict:
@@ -150,7 +150,11 @@ class Multils:
             return tree
 
         page = (await cls.request("GET", url)).get("text", "")
-        tree = html.fromstring(page).find("body")
+        if not page or not page.strip():
+            return {}
+
+        tree = html.fromstring(page)
+        tree = tree.find("body") if tree.find("body") is not None else tree
 
         primary_content_div = find_content_heavy_div(tree)
 
@@ -190,22 +194,23 @@ class Mule(ABC, Multils):
     async def __call__(self, **depends_on: Awaitable[list[dict]]) -> list[dict]:
         pass
 
-    async def _websearch(self, search: str) -> list:
-        search_results = await Mule.google(
-            search, num_results=int(self.search_num_res * 1.5)
+    async def _websearch(self, query: str) -> list:
+        search_results = Mule.ddg_search(
+            query, num_results=int(self.search_num_res * 2)
         )
 
         sources: list[dict] = [
             item
             for item in await asyncio.gather(
                 *(
-                    Mule.scrape_page(r.title, r.url, self.search_allowed_tags)
+                    Mule.scrape_page(r["title"], r["href"], self.search_allowed_tags)
                     for r in search_results
+                    if r
                 )
             )
             if item is not None
             and item.get("content")
-            and len(item.get("content", "").split()) > 20
+            and len(item.get("content", "").split()) > 100
         ]
 
         # for src in sources:
@@ -213,7 +218,7 @@ class Mule(ABC, Multils):
         #     l = len(src["content"].split("\n"))
         #     print(f"{l}\n\n")
         # print(f"  - {len(sources)} pages")
-        return sources
+        return sources[: self.search_num_res]
 
     async def _ollama_call(self, prompt: str) -> list[dict]:
         chat_history = [{"role": "user", "content": prompt}]
