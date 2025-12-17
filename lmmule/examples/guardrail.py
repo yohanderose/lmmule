@@ -1,19 +1,14 @@
 import asyncio
-import argparse
 import json
 
+from lmmule.mule import Mule
 from lmmule.examples.allmules import Thinker
 import lmmule.mule
 
 
 async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--remote", action="store_true")
-    parser.add_argument("--model", default="phi4-mini", help="LLM model name")
-    args = parser.parse_args()
-
-    lmmule.mule.USE_REMOTE = args.remote
-    model_name = args.model
+    Mule.init_args()
+    model_name = lmmule.mule.args.model
 
     messages = [
         "what is the meaning of life",
@@ -46,9 +41,9 @@ async def main():
         )()
 
         print(
-            bool(t[-1]["content"])
+            t[-1]["content"]
             if lmmule.mule.USE_REMOTE
-            else bool(json.loads(t[-1]["content"])["result"])
+            else json.loads(t[-1]["content"])["result"]
         )
 
 

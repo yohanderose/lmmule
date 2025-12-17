@@ -4,6 +4,7 @@ import sys
 import asyncio
 import logging
 import aiohttp
+import argparse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Awaitable, Generator
@@ -13,6 +14,7 @@ from lxml import html, etree
 
 logging.basicConfig(filename="/tmp/mule.log", level=logging.INFO, filemode="a+")
 
+args = None
 USE_REMOTE = False
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -39,6 +41,19 @@ class MuleLoggerAdapter(logging.LoggerAdapter):
 
 
 class Multils:
+    @classmethod
+    def init_args(cls):
+        global args, USE_REMOTE
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--remote", action="store_true", help="Tries to use OpenRouter if provided"
+        )
+        parser.add_argument("--model", default="phi4-mini", help="LLM model name")
+
+        args = parser.parse_args()
+        USE_REMOTE = args.remote
+
     @classmethod
     async def request(
         cls, method: str, url: str, *, payload=None, headers=None

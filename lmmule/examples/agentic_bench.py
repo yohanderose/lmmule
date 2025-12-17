@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime
 from typing import Awaitable
 
+from lmmule.mule import Mule
 from lmmule.examples.allmules import ResearchTeam, Research, Thinker
 import lmmule.mule
 
@@ -15,13 +16,8 @@ console = Console()
 
 
 async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--remote", action="store_true")
-    parser.add_argument("--model", default="phi4-mini", help="LLM model name")
-    args = parser.parse_args()
-
-    lmmule.mule.USE_REMOTE = args.remote
-    model_name = args.model
+    Mule.init_args()
+    model_name = lmmule.mule.args.model
 
     ts1 = datetime.now()
     task1 = await ResearchTeam(
