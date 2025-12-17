@@ -20,15 +20,32 @@ cd lmmule
 python -m pip install .
 ```
 
+Ollama setup https://docs.ollama.com/quickstart
+
+To enable remote llm calls, sign up to OpenRouter, create an API key and ensure the `OPENROUTER_API_KEY` environment variable is set https://openrouter.ai/docs/quickstart
+
 ## Usage
 
-Please check out `lmmule/example.py` for the complete (and concise) example.
+Please check out [`lmmule/examples`](https://github.com/yohanderose/lmmule/tree/master/lmmule/examples) for complete (and concise) examples.
+
+**Running examples**
+
+```bash
+python lmmule/examples/simple.py # Using local Ollama instance
+
+python lmmule/examples/simple.py --remote --model "xiaomi/mimo-v2-flash:free" # With Openrouter
+```
+
+**High level roll-your-own**
+
+[`lmmule/examples/simple.py`](https://github.com/yohanderose/lmmule/blob/master/lmmule/examples/simple.py)
 
 ```python
-import json
 import asyncio
+import json
 
-from lmmule.example import Thinker, Critic
+from lmmule.examples.allmules import Thinker, Critic
+
 
 async def main():
     task1 = Thinker(
@@ -39,8 +56,8 @@ async def main():
     task2 = await Critic(
         "mule2-jane",
         "phi4-mini",
-        base_prompt="please evaluate this answer to the meaning of life: {}",
-    )(dep1=task1)
+        base_prompt="evaluate this answer to the meaning of life: {}",
+    )(prior1=task1)
     print(json.dumps(task2, indent=2))
 
 
@@ -53,8 +70,9 @@ if __name__ == "__main__":
 ## TODO
 
 - base tools in abstract class
-  - enhance ollama call (full payload options)
+  - enhance ollama call (full payload options),`OLLAMA_LOAD_TIMEOUT` reminder
   - websearch tool
+    - research papers
     - cache visited pages with ttl
     - selenium driverless fallback on simple request fail
 - auto pull ollama model/config if not exists
