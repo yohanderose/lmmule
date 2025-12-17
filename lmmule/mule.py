@@ -66,7 +66,10 @@ class Multils:
                     try:
                         return await response.json(content_type=None)
                     except Exception:
-                        return {"text": await response.text()}
+                        try:
+                            return {"text": await response.text()}
+                        except Exception:
+                            return {"text": ""}
 
                 return {"error": await response.text()}
 
@@ -197,28 +200,29 @@ class Mule(ABC, Multils):
     base_prompt: str = ""
     topics: str = ""
     output_format: dict = field(default_factory=dict)
-    search_num_res: int = 10
     search_allowed_tags: set[str] = field(default_factory=lambda: ALLOWED_TAG_DEFAULT)
 
     def __post_init__(self):
         self.log = MuleLoggerAdapter(
             logging.getLogger(__name__), {"mule_name": self.mule_name}
         )
+        self.chat_history = []
 
     @abstractmethod
     async def __call__(self, **depends_on: Awaitable[list[dict]]) -> list[dict]:
         pass
 
-    async def _websearch(self, query: str) -> list:
-        search_results = Mule.ddg_search(
-            query, num_results=int(self.search_num_res * 2)
-        )
+    @classmethod
+    async def websearch(
+        cls, query: str, num_res: int, allowed_tags: set = ALLOWED_TAG_DEFAULT
+    ) -> list:
+        search_results = Mule.ddg_search(query, num_results=int(num_res * 2))
 
         sources: list[dict] = [
             item
             for item in await asyncio.gather(
                 *(
-                    Mule.scrape_page(r["title"], r["href"], self.search_allowed_tags)
+                    Mule.scrape_page(r["title"], r["href"], allowed_tags)
                     for r in search_results
                     if r
                 )
@@ -233,41 +237,41 @@ class Mule(ABC, Multils):
         #     l = len(src["content"].split("\n"))
         #     print(f"{l}\n\n")
         # print(f"  - {len(sources)} pages")
-        return sources[: self.search_num_res]
+        return sources[:num_res]
 
-    async def _ollama_call(self, prompt: str) -> list[dict]:
-        chat_history = [{"role": "user", "content": prompt}]
+    async def _ollama_call(self) -> list[dict]:
         resp = None
         payload = {
             "model": self.model_name,
             "stream": False,
             "format": self.output_format,
-            "messages": chat_history,
+            "messages": self.chat_history,
         }
 
         try:
             resp = await Mule.request("POST", OLLAMA_URL, payload=payload)
-            chat_history += [{"role": "system", "content": resp["message"]["content"]}]
+            self.chat_history += [
+                {"role": "system", "content": resp["message"]["content"]}
+            ]
             self.log.info(
                 f"""Ollama call:
-                \ninput: {json.dumps(chat_history[-2], indent=2)}
-                \noutput: {json.dumps(chat_history[-1], indent=2)}"""
+                \ninput: {json.dumps(self.chat_history[-2], indent=2)}
+                \noutput: {json.dumps(self.chat_history[-1], indent=2)}"""
             )
         except Exception as e:
             self.log.error(
                 f"""Could not call Ollama | {e}\n{resp}
                 \npayload:{json.dumps(payload, indent=2)}"""
             )
-        return chat_history
+        return self.chat_history
 
-    async def _openrouter_call(self, prompt: str) -> list[dict]:
+    async def _openrouter_call(self) -> list[dict]:
 
         openrouter_key = os.environ.get("OPENROUTER_API_KEY")
         if openrouter_key is None:
             print("Env variable 'OPENROUTER_API_KEY' not set, exiting..")
             sys.exit()
 
-        chat_history = [{"role": "user", "content": prompt}]
         resp = None
         headers = {
             "Authorization": f"Bearer {openrouter_key}",
@@ -275,31 +279,30 @@ class Mule(ABC, Multils):
         }
         payload = {
             "model": self.model_name,
-            "messages": chat_history,
+            "messages": self.chat_history,
         }
 
         try:
             resp = await Mule.request(
                 "POST", OPENROUTER_URL, payload=payload, headers=headers
             )
-            chat_history += [
+            self.chat_history += [
                 {"role": "system", "content": resp["choices"][0]["message"]["content"]}
             ]
             self.log.info(
                 f"""Openrouter call:
-                \ninput: {json.dumps(chat_history[-2], indent=2)}
-                \noutput: {json.dumps(chat_history[-1], indent=2)}"""
+                \ninput: {json.dumps(self.chat_history[-2], indent=2)}
+                \noutput: {json.dumps(self.chat_history[-1], indent=2)}"""
             )
         except Exception as e:
             self.log.error(
                 f"""Could not call Openrouter | {e}\n{resp}
                 \npayload:{json.dumps(payload, indent=2)}"""
             )
-        return chat_history
+        return self.chat_history
 
     async def llm_call(self, prompt: str) -> list[dict]:
+        self.chat_history += [{"role": "user", "content": prompt}]
         return (
-            await self._openrouter_call(prompt)
-            if USE_REMOTE
-            else await self._ollama_call(prompt)
+            await self._openrouter_call() if USE_REMOTE else await self._ollama_call()
         )
