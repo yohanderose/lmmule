@@ -1,14 +1,14 @@
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Computed, Text, String, text, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import mapped_column
+from sqlalchemy import text, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy.exc import IntegrityError
 from pgvector.sqlalchemy import Vector
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import sys
 
 from lmmule.mule import Mule, OPENROUTER_URL, OLLAMA_URL
+from lmmule.models import Base, Source, Document
 
 
 @dataclass
@@ -54,34 +54,13 @@ class Rag:
     embedder: EmbeddingProvider
 
     def __post_init__(self):
-        class Base(DeclarativeBase):
-            pass
-
-        class Document(Base):
-            __tablename__ = "documents"
-
-            id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-            text: Mapped[str] = mapped_column(Text)
-            text_hash: Mapped[str] = mapped_column(
-                String(32),
-                Computed("md5(text::bytea)"),
-                unique=True,
-            )
-            # namespace: Mapped[str] = mapped_column(Text)
-            # src_name: Mapped[str] = mapped_column(Text)
-            # src_author: Mapped[str] = mapped_column(Text)
-            # src_type: Mapped[str] = mapped_column(Text)
-            embedding = mapped_column(Vector(self.embedder.embed_dim))
-            metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
-
-        self.Base = Base
-        self.Document = Document
+        Document.embedding = mapped_column(Vector(self.embedder.embed_dim))
 
     async def init_db(self):
         self.engine = create_async_engine(self.postgres_url, echo=True)
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.engine.begin() as conn:
-            await conn.run_sync(self.Base.metadata.create_all)
+            await conn.run_sync(Base.metadata.create_all)
 
         if not await self.verify_db_connection():
             sys.exit()
@@ -96,44 +75,100 @@ class Rag:
             print("DB error:", e)
             return False
 
-    async def upsert_documents(self, texts: list[str], metadatas: list[dict] | None):
+    async def upsert_source(
+        self, name: str, author: str | None = None, type: str = "unknown"
+    ) -> int:
+        async with self.Session() as db:
+            stmt = (
+                insert(Source)
+                .values(name=name, author=author, type=type)
+                .on_conflict_do_update(
+                    index_elements=["name"], set_=dict(author=author, type=type)
+                )
+                .returning(Source.id)
+            )
+            result = await db.execute(stmt)
+            await db.commit()
+            return result.scalar_one()
+
+    async def upsert_documents(
+        self,
+        texts: list[str],
+        source_id: int,
+        namespace: str = "default",
+        metadatas: list[dict] | None = None,
+    ):
         metadatas = metadatas or [{}] * len(texts)
         embeddings = await self.embedder.batch_embed(texts)
-
         async with self.Session() as db:
-            try:
-                for text, embedding, metadata in zip(texts, embeddings, metadatas):
-                    doc = self.Document(
-                        text=text, embedding=embedding, metadata_=metadata
+            for text, embedding, metadata in zip(texts, embeddings, metadatas):
+                stmt = (
+                    insert(Document)
+                    .values(
+                        text=text,
+                        namespace=namespace,
+                        embedding=embedding,
+                        source_id=source_id,
+                        metadata_=metadata,
                     )
-
-                    db.add(doc)
-                    await db.commit()
-            except IntegrityError:
-                pass
+                    .on_conflict_do_nothing(constraint="uq_text_hash_namespace")
+                )
+                await db.execute(stmt)
+            await db.commit()
 
     async def search(
-        self, query: str, top_k: int = 5, threshold: float = 0.7
+        self,
+        query: str,
+        namespace: str = "default",
+        top_k: int = 5,
+        threshold: float = 0.7,
     ) -> list[dict]:
         query_embedding = (await self.embedder.batch_embed([query]))[0]
         async with self.Session() as db:
             stmt = (
                 select(
-                    self.Document.text,
-                    self.Document.metadata_,
-                    self.Document.embedding.cosine_distance(query_embedding).label(
+                    Document.text,
+                    Document.metadata_,
+                    Source.name,
+                    Source.author,
+                    Source.type,
+                    Document.embedding.cosine_distance(query_embedding).label(
                         "distance"
                     ),
                 )
+                .join(Document.source)
                 .where(
-                    self.Document.embedding.cosine_distance(query_embedding) < threshold
+                    Document.namespace == namespace,
+                    Document.embedding.cosine_distance(query_embedding) < threshold,
                 )
                 .order_by("distance")
                 .limit(top_k)
             )
-
             result = await db.execute(stmt)
             return [
-                {"text": text, "metadata": metadata, "score": 1 - distance}
-                for text, metadata, distance in result
+                {
+                    "text": text,
+                    "metadata": metadata,
+                    "source": {
+                        "name": src_name,
+                        "author": src_author,
+                        "type": src_type,
+                    },
+                    "score": 1 - distance,
+                }
+                for text, metadata, src_name, src_author, src_type, distance in result
+            ]
+
+    async def get_all(self, namespace: str) -> list[dict]:
+        async with self.Session() as db:
+            stmt = select(Document).where(Document.namespace == namespace)
+            result = await db.execute(stmt)
+            return [
+                {
+                    "id": doc.id,
+                    "text": doc.text,
+                    "metadata": doc.metadata_,
+                    "source_id": doc.source_id,
+                }
+                for doc in result.scalars()
             ]
