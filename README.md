@@ -78,9 +78,12 @@ I've included an example comparing agentic vs non-agentic approaches. As demonst
 ## TODO
 
 - base tools in abstract class
-  - enhance ollama call (full payload options),`OLLAMA_LOAD_TIMEOUT` reminder
+  - fast API
+    - doc processing pipe
+    - agentic rag flow
+  - remote / local fallback
   - websearch tool
-    - research papers
+    - !!research papers
     - cache visited pages with ttl
     - selenium driverless fallback on simple request fail
 - auto pull ollama model/config if not exists
