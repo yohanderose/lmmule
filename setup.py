@@ -10,7 +10,7 @@ def read_requirements() -> list:
 
 setup(
     name="lmmule",
-    version="0.1.0",
+    version="0.1.1",
     author="Yohan de Rose",
     author_email="yohan@aapstaart.com",
     description=re.search(r"Lightweight.*?\.", open("README.md").read()).group(),

@@ -16,8 +16,8 @@ logging.basicConfig(filename="/tmp/mule.log", level=logging.INFO, filemode="a+")
 
 args = None
 USE_REMOTE = False
-OLLAMA_URL = "http://localhost:11434/api/chat"
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OLLAMA_URL = "http://localhost:11434"
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
 
 BLOCKED_SOURCES = ["youtube.com", "google.com", "facebook.com"]
 ALLOWED_TAG_DEFAULT = {
@@ -53,6 +53,14 @@ class Multils:
 
         args = parser.parse_args()
         USE_REMOTE = args.remote
+
+    @classmethod
+    def get_openrouter_key(cls) -> str:
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+        if openrouter_key is None:
+            print("Env variable 'OPENROUTER_API_KEY' not set, exiting..")
+            sys.exit()
+        return openrouter_key
 
     @classmethod
     async def request(
@@ -192,26 +200,6 @@ class Multils:
             ),
         }
 
-
-@dataclass
-class Mule(ABC, Multils):
-    mule_name: str
-    model_name: str
-    base_prompt: str = ""
-    topics: str = ""
-    output_format: dict = field(default_factory=dict)
-    search_allowed_tags: set[str] = field(default_factory=lambda: ALLOWED_TAG_DEFAULT)
-
-    def __post_init__(self):
-        self.log = MuleLoggerAdapter(
-            logging.getLogger(__name__), {"mule_name": self.mule_name}
-        )
-        self.chat_history = []
-
-    @abstractmethod
-    async def __call__(self, **depends_on: Awaitable[list[dict]]) -> list[dict]:
-        pass
-
     @classmethod
     async def websearch(
         cls, query: str, num_res: int, allowed_tags: set = ALLOWED_TAG_DEFAULT
@@ -232,12 +220,27 @@ class Mule(ABC, Multils):
             and len(item.get("content", "").split()) > 100
         ]
 
-        # for src in sources:
-        #     print(f">> {src['title']}\n({src['url']})\n")
-        #     l = len(src["content"].split("\n"))
-        #     print(f"{l}\n\n")
-        # print(f"  - {len(sources)} pages")
         return sources[:num_res]
+
+
+@dataclass
+class Mule(ABC, Multils):
+    mule_name: str
+    model_name: str
+    base_prompt: str = ""
+    topics: str = ""
+    output_format: dict = field(default_factory=dict)
+    search_allowed_tags: set[str] = field(default_factory=lambda: ALLOWED_TAG_DEFAULT)
+
+    def __post_init__(self):
+        self.log = MuleLoggerAdapter(
+            logging.getLogger(__name__), {"mule_name": self.mule_name}
+        )
+        self.chat_history = []
+
+    @abstractmethod
+    async def __call__(self, **depends_on: Awaitable[list[dict]]) -> list[dict]:
+        pass
 
     async def _ollama_call(self) -> list[dict]:
         resp = None
@@ -249,7 +252,7 @@ class Mule(ABC, Multils):
         }
 
         try:
-            resp = await Mule.request("POST", OLLAMA_URL, payload=payload)
+            resp = await Mule.request("POST", f"{OLLAMA_URL}/api/chat", payload=payload)
             self.chat_history += [
                 {"role": "system", "content": resp["message"]["content"]}
             ]
@@ -266,15 +269,9 @@ class Mule(ABC, Multils):
         return self.chat_history
 
     async def _openrouter_call(self) -> list[dict]:
-
-        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-        if openrouter_key is None:
-            print("Env variable 'OPENROUTER_API_KEY' not set, exiting..")
-            sys.exit()
-
         resp = None
         headers = {
-            "Authorization": f"Bearer {openrouter_key}",
+            "Authorization": f"Bearer {Mule.get_openrouter_key()}",
             "Content-Type": "application/json",
         }
         payload = {
@@ -284,7 +281,10 @@ class Mule(ABC, Multils):
 
         try:
             resp = await Mule.request(
-                "POST", OPENROUTER_URL, payload=payload, headers=headers
+                "POST",
+                f"{OPENROUTER_URL}/chat/completions",
+                payload=payload,
+                headers=headers,
             )
             self.chat_history += [
                 {"role": "system", "content": resp["choices"][0]["message"]["content"]}

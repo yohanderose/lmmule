@@ -1,3 +1,7 @@
+notebooks/
+postgres/
+postgres
+
 ### Emacs ###
 # -*- mode: gitignore; -*-
 *~

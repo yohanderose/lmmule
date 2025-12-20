@@ -3,4 +3,6 @@ asyncio>=4.0.0
 ddgs==9.9.3
 markdownify==1.2.0
 lxml==6.0.0
-
+sqlalchemy==2.0.45
+pgvector==0.4.2
+asyncpg==0.31.0
