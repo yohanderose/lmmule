@@ -2,6 +2,11 @@ notebooks/
 postgres/
 postgres
 
+quotes.csv
+
+uv.lock
+.python-version
+
 ### Emacs ###
 # -*- mode: gitignore; -*-
 *~
