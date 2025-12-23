@@ -231,12 +231,12 @@ class Mule(ABC, Multils):
     topics: str = ""
     output_format: dict = field(default_factory=dict)
     search_allowed_tags: set[str] = field(default_factory=lambda: ALLOWED_TAG_DEFAULT)
+    chat_history: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
         self.log = MuleLoggerAdapter(
             logging.getLogger(__name__), {"mule_name": self.mule_name}
         )
-        self.chat_history = []
 
     @abstractmethod
     async def __call__(self, **depends_on: Awaitable[list[dict]]) -> list[dict]:
